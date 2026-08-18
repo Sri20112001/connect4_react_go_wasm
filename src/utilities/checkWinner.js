@@ -16,6 +16,21 @@ export const checkWinner = (board, row, column, player) => {
     }
     return false;
 };
+export const countWinningLines = (board, row, column, player) => {
+    if (player === null) {
+        return 0;
+    }
+    let lines = 0;
+    for (const [rowDirection, columnDirection] of DIRECTIONS) {
+        const count = 1 +
+            countPieces(board, row, column, rowDirection, columnDirection, player) +
+            countPieces(board, row, column, -rowDirection, -columnDirection, player);
+        if (count >= 4) {
+            lines++;
+        }
+    }
+    return lines;
+};
 export const countPieces = (board, row, column, rowDirection, columnDirection, player) => {
     let count = 0;
     let currentRow = row + rowDirection;

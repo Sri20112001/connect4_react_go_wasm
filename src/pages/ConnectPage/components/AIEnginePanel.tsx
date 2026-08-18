@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { AIEngineProps, Algorithm, Engine } from "../../../types/types";
 
 export default function AIEngine({ onRunSimulation }: AIEngineProps) {
-  const [engine, setEngine] = useState<Engine>("wasm");
+  const [engine, setEngine] = useState<Engine>("javascript");
   const [algorithm, setAlgorithm] = useState<Algorithm>("monte-carlo");
   const [simulations, setSimulations] = useState(100000);
 

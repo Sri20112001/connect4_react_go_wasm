@@ -29,6 +29,32 @@ export const checkWinner = (
   return false;
 };
 
+export const countWinningLines = (
+  board: Board,
+  row: number,
+  column: number,
+  player: Player,
+): number => {
+  if (player === null) {
+    return 0;
+  }
+
+  let lines = 0;
+
+  for (const [rowDirection, columnDirection] of DIRECTIONS) {
+    const count =
+      1 +
+      countPieces(board, row, column, rowDirection, columnDirection, player) +
+      countPieces(board, row, column, -rowDirection, -columnDirection, player);
+
+    if (count >= 4) {
+      lines++;
+    }
+  }
+
+  return lines;
+};
+
 export const countPieces = (
   board: Board,
   row: number,

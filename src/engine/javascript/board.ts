@@ -25,7 +25,7 @@ export function dropPiece (board: Board, column: number, player: Player): number
     }
 
     for (let row = ROWS - 1; row >=0 ; row--) {
-        if(board[row][column] = player) {
+        if(board[row][column] === null) {
             board[row][column] = player;
 
             return row;

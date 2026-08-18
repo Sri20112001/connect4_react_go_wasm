@@ -17,6 +17,8 @@ export interface GameState {
   currentPlayer: Player;
   winner: Player;
   isDraw: boolean;
+  redConnects: number;
+  yellowConnects: number;
 }
 
 export type Engine = "javascript" | "wasm";

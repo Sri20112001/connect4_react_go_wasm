@@ -5,8 +5,8 @@ export default function ConnectBoard({
   currentPlayer,
   onColumnClick,
 }: ConnectBoardProps) {
-  console.log("ConnectBoard board:", board);
-  console.log("Current player:", currentPlayer);
+  // console.log("ConnectBoard board:", board);
+  // console.log("Current player:", currentPlayer);
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
       <div className="mb-5 text-center">
