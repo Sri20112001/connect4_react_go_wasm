@@ -6,6 +6,7 @@ import {
   countImmediateWinningMoves,
   findImmediateWinningMove,
 } from "./tactical";
+import { findForkingMove } from "./threats";
 import { evaluateBoard } from "./evaluateBoard";
 
 const chooseWeightedRandomColumn = (availableColumns: number[]): number => {
@@ -63,6 +64,12 @@ const chooseHeuristicWeightedColumn = (
 
       if (winningMoves >= 2) {
         score += 500;
+      }
+
+      // Strongly prefer moves that do not hand the
+      // opponent a fork on their next move.
+      if (findForkingMove(testBoard, opponent) !== null) {
+        score -= 150;
       }
 
       return {
@@ -125,6 +132,21 @@ const chooseRolloutMove = (board: Board, player: Player): number | null => {
 
   if (blockingMove !== null) {
     return blockingMove;
+  }
+
+  // 2.5. Can I create a fork?
+  const forkingMove = findForkingMove(board, player);
+
+  if (forkingMove !== null) {
+    const forkBoard = cloneBoard(board);
+
+    dropPiece(forkBoard, forkingMove, player);
+
+    // Only play the fork if it doesn't hand the opponent
+    // an immediate winning move in the process.
+    if (findImmediateWinningMove(forkBoard, opponent) === null) {
+      return forkingMove;
+    }
   }
 
   // 3. Otherwise use center-biased randomness

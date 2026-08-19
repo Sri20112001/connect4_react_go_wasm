@@ -7,6 +7,8 @@ import type {
 import { cloneBoard, dropPiece, getAvailableColumns } from "./board";
 import { simulateGame } from "./simulateGame";
 import { findImmediateWinningMove } from "./tactical";
+import { findForkingMove } from "./threats";
+import { evaluateBoard } from "./evaluateBoard";
 
 const runMonteCarlo = (
   board: Board,
@@ -52,6 +54,36 @@ const runMonteCarlo = (
     };
   }
 
+  /**
+   * Play a forking move immediately.
+   *
+   * A fork creates two winning threats in different
+   * columns, so the opponent can block at most one and
+   * we win on the next move. Skip the simulation budget.
+   */
+  const forkingMove = findForkingMove(board, player);
+
+  if (forkingMove !== null) {
+    const forkBoard = cloneBoard(board);
+
+    dropPiece(forkBoard, forkingMove, player);
+
+    // Only play the fork if it doesn't hand the opponent
+    // an immediate winning move in the process.
+    if (findImmediateWinningMove(forkBoard, opponent) === null) {
+      const end = performance.now();
+      const executionTime = end - start;
+
+      return {
+        bestMove: forkingMove,
+        results: [],
+        executionTime,
+        totalSimulations: 0,
+        simulationsPerSecond: 0,
+      };
+    }
+  }
+
   const availableColumns = getAvailableColumns(board);
 
   const results: SimulationResult[] = [];
@@ -92,13 +124,57 @@ const runMonteCarlo = (
     });
   }
   results.sort((a, b) => b.winRate - a.winRate);
-  // const heuristicScore = evaluateBoard(result.finalBoard, player);
+
   const end = performance.now();
   const executionTime = end - start;
   const totalSimulations = simulationsPerMove * availableColumns.length;
   const simulationsPerSecond = totalSimulations / (executionTime / 1000);
 
-  const bestMove = results[0]?.column ?? -1;
+  /**
+   * Pick the best move.
+   *
+   * When Monte Carlo is confident (high win rate), the
+   * column with the best win rate wins outright.
+   *
+   * When several columns have similar win rates, or the
+   * best win rate is low, use a tactical evaluation as a
+   * tie-breaker so the engine doesn't confidently pick a
+   * strategically bad move:
+   *
+   *   + board evaluation after the move
+   *   − penalty if the move lets the opponent fork
+   */
+  const bestRate = results[0]?.winRate ?? 0;
+
+  const tieThreshold = bestRate < 55 ? 5 : 1.5;
+
+  const candidates = results.filter((result) => {
+    return bestRate - result.winRate <= tieThreshold;
+  });
+
+  let bestMove = -1;
+  let bestTacticalScore = -Infinity;
+
+  for (const candidate of candidates) {
+    const testBoard = cloneBoard(board);
+
+    dropPiece(testBoard, candidate.column, player);
+
+    let tacticalScore = evaluateBoard(testBoard, player);
+
+    if (findForkingMove(testBoard, opponent) !== null) {
+      tacticalScore -= 300;
+    }
+
+    if (tacticalScore > bestTacticalScore) {
+      bestTacticalScore = tacticalScore;
+      bestMove = candidate.column;
+    }
+  }
+
+  if (bestMove === -1) {
+    bestMove = results[0]?.column ?? -1;
+  }
   // console.log("RUNNING UPDATED MONTE CARLO");
 
   // console.log({
