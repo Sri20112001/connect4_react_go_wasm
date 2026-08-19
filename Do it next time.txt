@@ -1,0 +1,227 @@
+Exactly. Given that context, **we should not change the algorithm again yet**.
+
+The correct next step is validation of the fork implementation before benchmarking. 🔍
+
+### Step 1 — Typecheck + lint
+
+Run your normal checks first:
+
+```bash
+npm run typecheck
+npm run lint
+```
+
+If you don't have a `typecheck` script, use:
+
+```bash
+npx tsc --noEmit
+npm run lint
+```
+
+We want **zero TypeScript errors** before trusting the benchmark.
+
+---
+
+### Step 2 — Sanity-test `findForkingMove`
+
+Before running another 100-game benchmark, test the actual tactical behavior.
+
+We need at least these cases:
+
+#### Test A — Existing fork
+
+Construct a board where:
+
+```text
+Current player → one move
+             ↓
+creates two separate winning columns
+```
+
+Expected:
+
+```ts
+findForkingMove(board, player)
+```
+
+returns that column.
+
+#### Test B — No fork
+
+A position with no double threat should return:
+
+```ts
+null
+```
+
+#### Test C — Opponent fork avoidance
+
+If a candidate move allows the opponent to create a fork, your rollout should avoid that move **when a safe alternative exists**.
+
+#### Test D — Don't confuse immediate win with fork
+
+A move that simply wins immediately shouldn't need to be classified as a fork.
+
+Your tactical priority should effectively be:
+
+```text
+1. Immediate win
+2. Immediate block
+3. Fork
+4. Fork prevention
+5. Monte Carlo evaluation
+6. Heuristic tie-breaking
+```
+
+The exact implementation can differ, but the semantics should remain clear.
+
+---
+
+### Step 3 — Check one particularly important thing
+
+Your fork implementation needs to count **real winning threats**, not merely "moves that look like they create two threats."
+
+For a candidate move:
+
+```text
+board
+  ↓
+play candidate
+  ↓
+find all columns where player can immediately win
+  ↓
+count UNIQUE winning columns
+```
+
+Then:
+
+```ts
+winningColumns.length >= 2
+```
+
+means it's a fork.
+
+This distinction matters because two winning cells in the **same column** aren't two independent threats. The opponent only needs to block that column once.
+
+---
+
+### Step 4 — Run a small benchmark first
+
+Don't immediately do:
+
+```text
+100 games × 1000 simulations
+```
+
+Again.
+
+Start with something cheap:
+
+```text
+100 simulations × 10 games
+```
+
+and compare against your previous baseline.
+
+You had:
+
+```text
+Before fork:
+
+100 sims   → 85%
+1000 sims  → 84%
+```
+
+Now we're looking for something like:
+
+```text
+After fork:
+
+100 sims → ?
+```
+
+The important thing isn't whether it jumps from 85% → 95%.
+
+The important question is:
+
+> **Did the tactical behavior actually change in the expected positions?**
+
+---
+
+### Step 5 — Then benchmark properly
+
+If sanity tests pass, I'd run:
+
+| Configuration | Games |
+| ------------- | ----: |
+| 100 sims      |   100 |
+| 1000 sims     |   100 |
+
+Only after that should we consider 5000.
+
+And importantly, record more than win rate:
+
+```text
+wins
+losses
+draws
+winRate
+averageMoves
+executionTime
+gamesPerSecond
+```
+
+I'd also add:
+
+```text
+forkWins
+forkBlocks
+immediateWins
+immediateBlocks
+```
+
+if your engine can expose those counters.
+
+That would make this project much more interesting from an engineering perspective because you can demonstrate **why** the AI improved, not merely that the win rate changed.
+
+---
+
+## One correction to my previous recommendation
+
+Given your latest context, I would **not** recommend changing the rollout policy or tactical layer right now.
+
+You've already implemented:
+
+* immediate wins
+* immediate blocks
+* center preference
+* heuristic evaluation
+* terminal scoring
+* move ordering
+* heuristic rollouts
+* fork detection
+* fork avoidance
+
+So we're now at the point where **measurement comes before another algorithmic change**.
+
+### Your immediate next milestone
+
+```text
+Fork implementation
+       ↓
+Typecheck
+       ↓
+Lint
+       ↓
+Fork unit/sanity tests
+       ↓
+10-game smoke benchmark
+       ↓
+100-game benchmark
+       ↓
+Compare against 85% / 84% baseline
+       ↓
+Only then decide next optimization
+```
+
+If the fork implementation passes validation, **send me the test output and the new benchmark**. Then we can determine whether the next problem is algorithmic quality, Monte Carlo variance, opponent strength, or raw JS performance.
