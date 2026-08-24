@@ -1,4 +1,7 @@
-import type {Board, Player} from "../types/types";
+import type {Board, Player, Algorithm} from "../types/types";
+import type { MoveAnalysis } from "./javascript/analysis/types";
+
+export type { MoveAnalysis };
 
 export interface SimulationResult {
     column: number;
@@ -45,3 +48,80 @@ export type MoveFunction = (
   board: Board,
   player: Player,
 ) => number;
+
+export type AIEngineOptions = {
+    simulationsPerMove: number;
+    algorithm?: Algorithm;
+    explorationConstant?: number;
+}
+
+export interface AIEngine {
+    chooseMove(
+        board: Board,
+        player: Player,
+        options: AIEngineOptions,
+    ): Promise<MoveAnalysis>;
+}
+
+export type BenchmarkResult = {
+  engine: "javascript" | "wasm";
+  algorithm: Algorithm;
+  simulationsPerMove: number;
+  totalSimulations: number;
+  executionTime: number;
+  simulationsPerSecond: number;
+  bestMove: number | null;
+};
+
+export type BenchmarkComparison = {
+  simulationsPerMove: number;
+  javascript: BenchmarkResult | null;
+  wasm: BenchmarkResult | null;
+  speedup: number | null;
+  parity: boolean | null;
+};
+
+export type BenchmarkOptions = {
+  workloads: number[];
+  warmupRuns: number;
+  measuredRuns: number;
+  alternateOrder: boolean;
+  algorithm?: Algorithm;
+};
+
+export type BenchmarkStats = {
+  averageExecutionTime: number;
+  medianExecutionTime: number;
+  minExecutionTime: number;
+  maxExecutionTime: number;
+  standardDeviation: number;
+  averageSimulationsPerSecond: number;
+  medianSimulationsPerSecond: number;
+};
+
+export type BenchmarkAggregate = {
+  engine: "javascript" | "wasm";
+  algorithm: Algorithm;
+  simulationsPerMove: number;
+  runs: BenchmarkResult[];
+  stats: BenchmarkStats;
+};
+
+export type BenchmarkEnvironment = {
+  userAgent: string;
+  hardwareConcurrency: number | null;
+  deviceMemory: number | null;
+  timestamp: string;
+  wasmStatus: string;
+};
+
+export type ReliableBenchmarkComparison = {
+  simulationsPerMove: number;
+  algorithm: Algorithm;
+  javascript: BenchmarkAggregate | null;
+  wasm: BenchmarkAggregate | null;
+  medianSpeedup: number | null;
+  averageSpeedup: number | null;
+  parity: boolean | null;
+  environment: BenchmarkEnvironment;
+};

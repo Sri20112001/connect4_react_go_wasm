@@ -3,10 +3,9 @@ import type { ConnectBoardProps } from "../../../types/types";
 export default function ConnectBoard({
   board,
   currentPlayer,
+  isThinking = false,
   onColumnClick,
 }: ConnectBoardProps) {
-  // console.log("ConnectBoard board:", board);
-  // console.log("Current player:", currentPlayer);
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
       <div className="mb-5 text-center">
@@ -22,11 +21,13 @@ export default function ConnectBoard({
             <button
               key={column}
               type="button"
+              disabled={isThinking}
               onClick={() => {
-                console.log("BUTTON CLICKED:", column);
+                if (isThinking) return;
                 onColumnClick(column);
               }}
-              className="rounded-md py-1 text-sm text-zinc-500 transition hover:bg-zinc-800 hover:text-white"
+              className="rounded-md py-1 text-sm text-zinc-500 transition hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label={`Drop in column ${column + 1}`}
             >
               {column + 1}
             </button>
@@ -35,7 +36,7 @@ export default function ConnectBoard({
       </div>
 
       {/* Board */}
-      <div className="rounded-lg bg-blue-700 p-2">
+      <div className="relative rounded-lg bg-blue-700 p-2">
         <div className="grid grid-cols-7 gap-2">
           {board.map((row, rowIndex) =>
             row.map((player, columnIndex) => (
@@ -54,18 +55,24 @@ export default function ConnectBoard({
             )),
           )}
         </div>
+
+        {isThinking && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-zinc-950/70 backdrop-blur-[1px]">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-white" />
+            <span className="text-sm font-medium text-white">AI is thinking…</span>
+            <span className="text-xs text-zinc-400">You’ll be able to play right after</span>
+          </div>
+        )}
       </div>
 
       {/* Current player */}
       <div className="mt-5 flex justify-center">
         <div className="flex items-center gap-2 text-sm text-zinc-300">
           <span
-            className={`h-3 w-3 rounded-full ${
-              currentPlayer === "red" ? "bg-red-500" : "bg-yellow-400"
-            }`}
+            className={`h-3 w-3 rounded-full ${currentPlayer === "red" ? "bg-red-500" : "bg-yellow-400"} ${isThinking ? "animate-pulse" : ""}`}
           />
 
-          {currentPlayer === "red" ? "Player's Turn" : "AI's Turn"}
+          {isThinking ? "AI is thinking…" : currentPlayer === "red" ? "Player's Turn" : "AI's Turn"}
         </div>
       </div>
     </div>

@@ -18,7 +18,7 @@ const runMonteCarlo = (
   }
 
   const analysis = analyzePosition(board, player, simulationsPerMove);
-
+  
   const bestMove = analysis[0]?.column ?? -1;
 
   const selected = analysis[0];
