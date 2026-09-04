@@ -11,17 +11,16 @@ const createInitialState = (): GameState => ({
   isDraw: false,
   redConnects: 0,
   yellowConnects: 0,
+  lastMove: null,
 });
 
 export function useConnect4() {
   const [game, setGame] = useState<GameState>(createInitialState);
 
   const dropPiece = useCallback((column: number) => {
-    console.log("Column from dropPiece:", column);
+    if (!Number.isInteger(column) || column < 0 || column >= COLUMNS) return;
 
     setGame((current) => {
-      console.log("Current game:", current);
-
       if (current.winner !== null || current.isDraw) {
         return current;
       }
@@ -31,8 +30,6 @@ export function useConnect4() {
       for (let row = ROWS - 1; row >= 0; row--) {
         if (nextBoard[row][column] === null) {
           nextBoard[row][column] = current.currentPlayer;
-
-          console.log("Next board:", nextBoard);
 
           const lines = countWinningLines(
             nextBoard,
@@ -48,7 +45,19 @@ export function useConnect4() {
             current.yellowConnects +
             (current.currentPlayer === "yellow" ? lines : 0);
 
-          // Game only ends when no more valid moves remain (board is full).
+          const lastMove = { row, column, player: current.currentPlayer } as const;
+
+          if (lines > 0) {
+            return {
+              ...current,
+              board: nextBoard,
+              redConnects,
+              yellowConnects,
+              winner: current.currentPlayer,
+              lastMove,
+            };
+          }
+
           if (isBoardFull(nextBoard)) {
             if (redConnects > yellowConnects) {
               return {
@@ -57,6 +66,7 @@ export function useConnect4() {
                 redConnects,
                 yellowConnects,
                 winner: "red",
+                lastMove,
               };
             }
 
@@ -67,6 +77,7 @@ export function useConnect4() {
                 redConnects,
                 yellowConnects,
                 winner: "yellow",
+                lastMove,
               };
             }
 
@@ -76,6 +87,7 @@ export function useConnect4() {
               redConnects,
               yellowConnects,
               isDraw: true,
+              lastMove,
             };
           }
 
@@ -85,6 +97,7 @@ export function useConnect4() {
             redConnects,
             yellowConnects,
             currentPlayer: current.currentPlayer === "red" ? "yellow" : "red",
+            lastMove,
           };
         }
       }
@@ -103,6 +116,7 @@ const resetGame = useCallback(() => {
     isDraw: game.isDraw,
     redConnects: game.redConnects,
     yellowConnects: game.yellowConnects,
+    lastMove: game.lastMove,
     dropPiece,
     resetGame,
     columns: COLUMNS,

@@ -196,7 +196,7 @@ const evaluateHorizontal = (board: Board, player: Player): number => {
       ];
 
       // Evaluate this particular group of 4.
-      score += evaluateWindow(board, window, player)
+      score += evaluateWindow(board, window, player);
     }
   }
 
@@ -250,7 +250,7 @@ const evaluateVertical = (board: Board, player: Player): number => {
       ];
 
       // Add this window's score to the total.
-      score += evaluateWindow(board, window, player)
+      score += evaluateWindow(board, window, player);
     }
   }
 
@@ -305,7 +305,7 @@ const evaluateDiagonalDown = (board: Board, player: Player): number => {
         },
       ];
       // Add its value to the overall score.
-      score += evaluateWindow(board, window, player)
+      score += evaluateWindow(board, window, player);
     }
   }
 
@@ -366,7 +366,7 @@ const evaluateDiagonalUp = (board: Board, player: Player): number => {
       ];
 
       // Add its value to the overall score.
-      score += evaluateWindow(board, window, player)
+      score += evaluateWindow(board, window, player);
     }
   }
 

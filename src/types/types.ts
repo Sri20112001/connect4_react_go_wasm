@@ -7,20 +7,36 @@ export type Player = "red" | "yellow" | null;
 
 export type Board = Player[][];
 
+export type LastMove = { row: number; column: number; player: Player } | null;
+
 export interface ConnectBoardProps {
   board: Board;
-  currentPlayer: Player;
+  currentPlayer: "red" | "yellow";
   isThinking?: boolean;
   onColumnClick: (column: number) => void;
+  winner?: Player;
+  isDraw?: boolean;
+  redConnects?: number;
+  yellowConnects?: number;
+  onReset?: () => void;
+  isLarge?: boolean;
+  showPanels?: boolean;
+  onTogglePanels?: () => void;
+  player1Color?: import("../utilities/pieceColors").PieceColorId;
+  player2Color?: import("../utilities/pieceColors").PieceColorId;
+  onOpenColorModal?: () => void;
+  lastMove?: LastMove;
+  lastAIMove?: LastMove;
 }
 
 export interface GameState {
   board: Board;
-  currentPlayer: Player;
+  currentPlayer: "red" | "yellow";
   winner: Player;
   isDraw: boolean;
   redConnects: number;
   yellowConnects: number;
+  lastMove: LastMove;
 }
 
 export type Engine = "javascript" | "wasm";
@@ -41,4 +57,6 @@ export interface AIEngineProps {
     algorithm: Algorithm,
     simulations: number,
   ) => void;
+  simulations?: number;
+  onSimulationsChange?: (n: number) => void;
 }

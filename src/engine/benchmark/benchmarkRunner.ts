@@ -11,6 +11,7 @@ import type {
 import { runJsBenchmarkInWorker } from "../workers/jsWorkerClient";
 import { loadWasm } from "../golang/wasmLoader";
 import { getWasmStatus } from "../golang/wasmLoader";
+import { clampSimulations } from "../../utilities/CONSTANTS";
 
 const toBenchmarkResult = (
   engine: "javascript" | "wasm",
@@ -36,12 +37,13 @@ export const runJsBenchmark = async (
   simulationsPerMove: number,
   algorithm: Algorithm = "monte-carlo",
 ): Promise<BenchmarkResult> => {
+  const safeSims = clampSimulations(simulationsPerMove);
   if (player === null) {
-    return toBenchmarkResult("javascript", algorithm, simulationsPerMove, null, 0, 0, 0);
+    return toBenchmarkResult("javascript", algorithm, safeSims, null, 0, 0, 0);
   }
 
   // Offload to Worker to keep main thread responsive
-  return runJsBenchmarkInWorker(board, player, simulationsPerMove, algorithm);
+  return runJsBenchmarkInWorker(board, player, safeSims, algorithm);
 };
 
 export const runWasmBenchmark = async (
@@ -50,8 +52,9 @@ export const runWasmBenchmark = async (
   simulationsPerMove: number,
   algorithm: Algorithm = "monte-carlo",
 ): Promise<BenchmarkResult> => {
+  const safeSims = clampSimulations(simulationsPerMove);
   if (player === null) {
-    return toBenchmarkResult("wasm", algorithm, simulationsPerMove, null, 0, 0, 0);
+    return toBenchmarkResult("wasm", algorithm, safeSims, null, 0, 0, 0);
   }
 
   await loadWasm();
@@ -70,12 +73,12 @@ export const runWasmBenchmark = async (
           simulationsPerSecond: number;
         };
       }
-    ).connect4RunMCTS?.({ board, player, simulationsPerMove });
+    ).connect4RunMCTS?.({ board, player, simulationsPerMove: safeSims });
     if (!wasmResult) throw new Error("WASM MCTS not ready");
     return toBenchmarkResult(
       "wasm",
       algorithm,
-      simulationsPerMove,
+      safeSims,
       wasmResult.bestMove === -1 ? null : wasmResult.bestMove,
       wasmResult.totalSimulations,
       wasmResult.executionTime,
@@ -96,14 +99,14 @@ export const runWasmBenchmark = async (
         simulationsPerSecond: number;
       };
     }
-  ).connect4RunMonteCarlo?.({ board, player, simulationsPerMove });
+  ).connect4RunMonteCarlo?.({ board, player, simulationsPerMove: safeSims });
 
   if (!wasmResult) throw new Error("WASM engine not ready");
 
   return toBenchmarkResult(
     "wasm",
     algorithm,
-    simulationsPerMove,
+    safeSims,
     wasmResult.bestMove === -1 ? null : wasmResult.bestMove,
     wasmResult.totalSimulations,
     wasmResult.executionTime,
@@ -152,11 +155,15 @@ export const runParityVerification = async (
   const results: { index: number; jsBest: number | null; wasmBest: number | null; parity: boolean }[] = [];
   for (let i = 0; i < boards.length; i++) {
     const { board, player } = boards[i];
-    const js = await runJsBenchmark(board, player, simulationsPerMove, algorithm);
-    await new Promise<void>((r) => setTimeout(r, 0));
-    const wasm = await runWasmBenchmark(board, player, simulationsPerMove, algorithm);
-    const parity = js.bestMove === wasm.bestMove;
-    results.push({ index: i, jsBest: js.bestMove, wasmBest: wasm.bestMove, parity });
+    try {
+      const js = await runJsBenchmark(board, player, simulationsPerMove, algorithm);
+      await new Promise<void>((r) => setTimeout(r, 0));
+      const wasm = await runWasmBenchmark(board, player, simulationsPerMove, algorithm);
+      const parity = js.bestMove !== null && wasm.bestMove !== null && js.bestMove === wasm.bestMove;
+      results.push({ index: i, jsBest: js.bestMove, wasmBest: wasm.bestMove, parity });
+    } catch {
+      results.push({ index: i, jsBest: null, wasmBest: null, parity: false });
+    }
     await new Promise<void>((r) => setTimeout(r, 0));
   }
   return results;
@@ -259,9 +266,13 @@ export const runReliableComparison = async (
   const medianSpeedup = wasmStats.medianExecutionTime > 0 ? jsStats.medianExecutionTime / wasmStats.medianExecutionTime : null;
   const averageSpeedup = wasmStats.averageExecutionTime > 0 ? jsStats.averageExecutionTime / wasmStats.averageExecutionTime : null;
 
-  const lastJs = jsRuns[jsRuns.length - 1]?.bestMove ?? null;
-  const lastWasm = wasmRuns[wasmRuns.length - 1]?.bestMove ?? null;
-  const parity = lastJs !== null && lastWasm !== null ? lastJs === lastWasm : null;
+  const pairParities = jsRuns.map((js, i) => {
+    const wasm = wasmRuns[i];
+    if (!wasm) return false;
+    return js.bestMove !== null && wasm.bestMove !== null && js.bestMove === wasm.bestMove;
+  });
+  const parity: boolean | null =
+    pairParities.length === 0 ? null : pairParities.every(Boolean) ? true : false;
 
   return {
     simulationsPerMove,
@@ -289,4 +300,48 @@ export const runReliableWorkloads = async (
     await new Promise<void>((r) => setTimeout(r, 0));
   }
   return out;
+};
+
+// --- Phase 21: scaling protocol ---
+
+export const SCALING_WORKLOADS = [1000, 5000, 10000, 25000, 50000, 100000] as const;
+
+export const DEFAULT_SCALING_PROTOCOL: BenchmarkOptions = {
+  workloads: [...SCALING_WORKLOADS],
+  warmupRuns: 2,
+  measuredRuns: 5,
+  alternateOrder: true,
+  algorithm: "monte-carlo",
+};
+
+export const toScalingCsv = (results: ReliableBenchmarkComparison[]): string => {
+  const header = [
+    "simulationsPerMove",
+    "algorithm",
+    "js_median_ms",
+    "wasm_median_ms",
+    "js_avg_ms",
+    "wasm_avg_ms",
+    "js_median_sps",
+    "wasm_median_sps",
+    "median_speedup",
+    "average_speedup",
+    "parity",
+  ].join(",");
+  const rows = results.map((r) =>
+    [
+      r.simulationsPerMove,
+      r.algorithm,
+      r.javascript?.stats.medianExecutionTime.toFixed(2) ?? "",
+      r.wasm?.stats.medianExecutionTime.toFixed(2) ?? "",
+      r.javascript?.stats.averageExecutionTime.toFixed(2) ?? "",
+      r.wasm?.stats.averageExecutionTime.toFixed(2) ?? "",
+      r.javascript?.stats.medianSimulationsPerSecond.toFixed(0) ?? "",
+      r.wasm?.stats.medianSimulationsPerSecond.toFixed(0) ?? "",
+      r.medianSpeedup?.toFixed(3) ?? "",
+      r.averageSpeedup?.toFixed(3) ?? "",
+      r.parity === null ? "" : String(r.parity),
+    ].join(","),
+  );
+  return [header, ...rows].join("\n");
 };

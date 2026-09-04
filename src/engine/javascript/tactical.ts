@@ -1,6 +1,6 @@
 import type { Board, Player } from "../../types/types";
 import { checkWinner, countWinningLines } from "../../utilities/checkWinner";
-import { cloneBoard, dropPiece, getAvailableColumns } from "./board";
+import { dropPiece, getAvailableColumns } from "./board";
 
 export const countImmediateWinningMoves = (
   board: Board,
@@ -15,9 +15,7 @@ export const countImmediateWinningMoves = (
   let winningMoves = 0;
 
   for (const column of availableColumns) {
-    const testBoard = cloneBoard(board);
-
-    const row = dropPiece(testBoard, column, player);
+    const { board: testBoard, row } = dropPiece(board, column, player);
 
     if (row === null) {
       continue;
@@ -39,9 +37,7 @@ export const findImmediateWinningMove = (
   const availableColumns = getAvailableColumns(board);
 
   for (const column of availableColumns) {
-    const simulatedBoard = cloneBoard(board);
-
-    const row = dropPiece(simulatedBoard, column, player);
+    const { board: simulatedBoard, row } = dropPiece(board, column, player);
 
     if (row !== null && checkWinner(simulatedBoard, row, column, player)) {
       return column;

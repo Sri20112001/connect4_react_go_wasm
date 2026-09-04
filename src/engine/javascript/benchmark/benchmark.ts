@@ -1,7 +1,6 @@
-import { getAvailableColumns } from "../board";
-import type { Board, Player } from "../../../types/types";
 import { playGame } from "./playGame";
 import type { MoveFunction } from "../../types";
+export { createRandomAI } from "../createRandomAI";
 
 export type BenchmarkResult = {
   games: number;
@@ -18,29 +17,6 @@ export type BenchmarkResult = {
 
   executionTime: number;
   gamesPerSecond: number;
-};
-
-/**
- * Creates a random move AI.
- */
-export const createRandomAI = (): MoveFunction => {
-  return (
-    board: Board,
-    _player: Player,
-  ): number => {
-    const availableColumns =
-      getAvailableColumns(board);
-
-    if (availableColumns.length === 0) {
-      return -1;
-    }
-
-    const randomIndex = Math.floor(
-      Math.random() * availableColumns.length,
-    );
-
-    return availableColumns[randomIndex];
-  };
 };
 
 /**
@@ -108,13 +84,16 @@ export const runBenchmark = (
       }`,
     );
 
-    /**
-     * Play the game.
-     */
-    const gameResult = playGame(
-      redAI,
-      yellowAI,
-    );
+    let gameResult: ReturnType<typeof playGame>;
+    try {
+      gameResult = playGame(redAI, yellowAI);
+    } catch (err) {
+      console.warn(`Game ${gameNumber} failed:`, err);
+      // Count as loss for ai1 to keep benchmark resilient, continue
+      losses++;
+      onProgress?.(gameNumber, games);
+      continue;
+    }
 
     /**
      * Determine whether the AI under test won.

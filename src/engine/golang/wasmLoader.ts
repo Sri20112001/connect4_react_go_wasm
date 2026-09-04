@@ -21,10 +21,14 @@ export const subscribeWasmStatus = (
 };
 
 export const loadWasm = (): Promise<boolean> => {
+  if (status === "ready") return Promise.resolve(true);
   if (wasmReadyPromise) return wasmReadyPromise;
 
-  if (status === "ready") return Promise.resolve(true);
-  if (status === "error") return Promise.resolve(false);
+  // Allow retry after error
+  if (status === "error") {
+    status = "idle";
+    wasmReadyPromise = null;
+  }
 
   setStatus("loading");
 
@@ -34,15 +38,22 @@ export const loadWasm = (): Promise<boolean> => {
     if (!GoCtor) {
       console.error("WASM loader: window.Go not found — wasm_exec.js not loaded");
       setStatus("error");
+      wasmReadyPromise = null;
       resolve(false);
       return;
     }
 
+    const baseUrl =
+      typeof window !== "undefined" && window.location
+        ? new URL(import.meta.env.BASE_URL, window.location.href).toString()
+        : import.meta.env.BASE_URL;
+    const wasmUrl = new URL("main.wasm", baseUrl).toString();
+
     const go = new GoCtor();
 
     const instantiate = WebAssembly.instantiateStreaming
-      ? WebAssembly.instantiateStreaming(fetch("/main.wasm"), go.importObject)
-      : fetch("/main.wasm")
+      ? WebAssembly.instantiateStreaming(fetch(wasmUrl), go.importObject)
+      : fetch(wasmUrl)
           .then((r) => r.arrayBuffer())
           .then((bytes) => WebAssembly.instantiate(bytes, go.importObject));
 
@@ -61,6 +72,7 @@ export const loadWasm = (): Promise<boolean> => {
       .catch((err) => {
         console.error("WASM load failed:", err);
         setStatus("error");
+        wasmReadyPromise = null;
         resolve(false);
       });
   });

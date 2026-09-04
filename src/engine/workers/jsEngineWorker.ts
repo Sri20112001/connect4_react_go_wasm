@@ -1,8 +1,10 @@
 import runMonteCarloJS from "../javascript/monteCarlo";
 import { runMCTS } from "../javascript/mcts";
+import { mctsResultToMonteCarloResult } from "../javascript/mctsToMonteCarlo";
 import { analyzePosition } from "../javascript/analysis/analyzePosition";
 import { analyzeMove } from "../javascript/analysis/analyzeMove";
 import type { Board, Player, Algorithm } from "../../types/types";
+import { clampSimulations } from "../../utilities/CONSTANTS";
 
 type BenchmarkRequest = {
   id: number;
@@ -51,7 +53,8 @@ const toBenchmarkResult = (engine: "javascript", algorithm: Algorithm, simulatio
 });
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
-  const { id, type, board, player, simulationsPerMove, algorithm } = e.data;
+  const { id, type, board, player, simulationsPerMove: rawSims, algorithm } = e.data;
+  const simulationsPerMove = clampSimulations(rawSims);
 
   try {
     if (type === "benchmark") {
@@ -80,7 +83,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         const base = analyzeMove(board, mcts.bestMove, player, 0);
         const visits = mcts.visits.get(mcts.bestMove) ?? 0;
         const winsF = mcts.wins.get(mcts.bestMove) ?? 0;
+        const draws = mcts.draws.get(mcts.bestMove) ?? 0;
         const winRate = visits > 0 ? (winsF / visits) * 100 : 0;
+        const pureWins = Math.max(0, Math.round(winsF - draws * 0.5));
+        const losses = Math.max(0, visits - pureWins - draws);
         const tier = base.isImmediateWin ? 3 : base.blocksImmediateLoss ? 2 : base.createsFork ? 1 : 0;
         let finalScore = tier * 1000 + winRate + base.evaluationScore / 10;
         if (base.allowsOpponentFork) finalScore -= 15;
@@ -88,9 +94,9 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         const analysis = {
           ...base,
           simulations: visits,
-          wins: Math.round(winsF),
-          losses: visits - Math.round(winsF),
-          draws: 0,
+          wins: pureWins,
+          losses,
+          draws,
           winRate,
           finalScore,
         };
@@ -110,24 +116,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       if (player === null) throw new Error("Player cannot be null");
       if (algorithm === "mcts") {
         const r = runMCTS(board, player, simulationsPerMove);
-        const results = Array.from(r.visits.entries()).map(([col, visits]) => {
-          const winsF = r.wins.get(col) ?? 0;
-          return {
-            column: col,
-            simulations: visits,
-            wins: Math.round(winsF),
-            losses: visits - Math.round(winsF),
-            draws: 0,
-            winRate: visits > 0 ? (winsF / visits) * 100 : 0,
-          };
-        });
-        const monteResult = {
-          bestMove: r.bestMove,
-          results,
-          executionTime: r.executionTime,
-          totalSimulations: r.totalSimulations,
-          simulationsPerSecond: r.executionTime > 0 ? r.totalSimulations / (r.executionTime / 1000) : 0,
-        };
+        const monteResult = mctsResultToMonteCarloResult(r);
         const response: WorkerResponse = { id, result: monteResult };
         (self as unknown as { postMessage: (m: unknown) => void }).postMessage(response);
         return;

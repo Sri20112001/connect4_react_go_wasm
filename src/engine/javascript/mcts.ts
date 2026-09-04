@@ -9,6 +9,13 @@ const EXPLORATION_CONSTANT = Math.sqrt(2);
 
 // --- Node ---
 
+// MCTS reward invariant (root-player perspective):
+//   win  = 1
+//   draw = 0.5
+//   loss = 0
+// Stored separately as (wins: literal win count) vs (wins reward) is ambiguous;
+// here `wins` is accumulated reward, `draws` is literal draw count, so:
+//   pureWins = wins - 0.5*draws, losses = visits - pureWins - draws
 class MCTSNode {
   board: Board;
   player: Player; // player to move at this node
@@ -16,7 +23,8 @@ class MCTSNode {
   parent: MCTSNode | null;
   children: Map<number, MCTSNode> = new Map();
   visits = 0;
-  wins = 0; // wins for root player
+  wins = 0; // accumulated reward for root player
+  draws = 0; // literal draws
   untriedMoves: number[];
   isTerminal = false;
   winner: Player | null = null; // if terminal win, winner; null for draw
@@ -55,8 +63,7 @@ const chooseHeuristicWeightedColumn = (board: Board, player: Player, availableCo
   const opponent = opponentOf(player);
   const candidates = availableColumns
     .map((col) => {
-      const testBoard = cloneBoard(board);
-      const row = dropPiece(testBoard, col, player);
+      const { board: testBoard, row } = dropPiece(board, col, player);
       if (row === null) return null;
       if (findImmediateWinningMove(testBoard, opponent) !== null) return null;
       const winningMoves = countImmediateWinningMoves(testBoard, player);
@@ -87,8 +94,7 @@ const chooseRolloutMove = (board: Board, player: Player): number | null => {
   if (block !== null) return block;
   const fork = findForkingMove(board, player);
   if (fork !== null) {
-    const fb = cloneBoard(board);
-    dropPiece(fb, fork, player);
+    const { board: fb } = dropPiece(board, fork, player);
     if (findImmediateWinningMove(fb, opp) === null) return fork;
   }
   const avail = getAvailableColumns(board);
@@ -97,18 +103,18 @@ const chooseRolloutMove = (board: Board, player: Player): number | null => {
 };
 
 const rollout = (board: Board, playerToMove: Player, rootPlayer: Player): "win" | "loss" | "draw" => {
-  const b = cloneBoard(board);
+  let b = cloneBoard(board);
   let current: Player = playerToMove;
   while (true) {
     const col = chooseRolloutMove(b, current);
     if (col === null) return "draw";
-    const row = dropPiece(b, col, current);
+    const { board: nextB, row } = dropPiece(b, col, current);
     if (row === null) {
-      // column full should not happen via chooseRolloutMove, but guard
       const avail = getAvailableColumns(b);
       if (avail.length === 0) return "draw";
       continue;
     }
+    b = nextB;
     if (checkWinner(b, row, col, current)) {
       return current === rootPlayer ? "win" : "loss";
     }
@@ -145,6 +151,7 @@ export type MCTSResult = {
   bestMove: number;
   visits: Map<number, number>;
   wins: Map<number, number>;
+  draws: Map<number, number>;
   executionTime: number;
   totalSimulations: number;
 };
@@ -158,12 +165,12 @@ export const runMCTS = (
   const start = performance.now();
 
   if (player === null) {
-    return { bestMove: -1, visits: new Map(), wins: new Map(), executionTime: 0, totalSimulations: 0 };
+    return { bestMove: -1, visits: new Map(), wins: new Map(), draws: new Map(), executionTime: 0, totalSimulations: 0 };
   }
 
   const available = getAvailableColumns(board);
   if (available.length === 0) {
-    return { bestMove: -1, visits: new Map(), wins: new Map(), executionTime: 0, totalSimulations: 0 };
+    return { bestMove: -1, visits: new Map(), wins: new Map(), draws: new Map(), executionTime: 0, totalSimulations: 0 };
   }
 
   // Fast path: immediate win — still prefer it, mirrors flat MC tier
@@ -174,6 +181,7 @@ export const runMCTS = (
       bestMove: immediateWin,
       visits: new Map([[immediateWin, iterations]]),
       wins: new Map([[immediateWin, iterations]]),
+      draws: new Map(),
       executionTime: end - start,
       totalSimulations: iterations,
     };
@@ -193,9 +201,7 @@ export const runMCTS = (
     let nodeToSimulate: MCTSNode = node;
     if (!node.isTerminal && node.untriedMoves.length > 0) {
       const move = node.untriedMoves.pop()!;
-      const newBoard = cloneBoard(node.board);
-      const row = dropPiece(newBoard, move, node.player);
-      // row should be valid
+      const { board: newBoard, row } = dropPiece(node.board, move, node.player);
       let isTerminal = false;
       let winner: Player | null = null;
       if (row !== null && checkWinner(newBoard, row, move, node.player)) {
@@ -227,7 +233,10 @@ export const runMCTS = (
     while (cur) {
       cur.visits += 1;
       if (result === "win") cur.wins += 1;
-      else if (result === "draw") cur.wins += 0.5; // draw half credit
+      else if (result === "draw") {
+        cur.wins += 0.5;
+        cur.draws += 1;
+      }
       cur = cur.parent;
     }
   }
@@ -250,9 +259,11 @@ export const runMCTS = (
 
   const visits = new Map<number, number>();
   const wins = new Map<number, number>();
+  const draws = new Map<number, number>();
   for (const [m, child] of root.children) {
     visits.set(m, child.visits);
     wins.set(m, child.wins);
+    draws.set(m, child.draws);
   }
 
   const end = performance.now();
@@ -260,6 +271,7 @@ export const runMCTS = (
     bestMove,
     visits,
     wins,
+    draws,
     executionTime: end - start,
     totalSimulations: iterations,
   };

@@ -1,5 +1,5 @@
 import type { Board, Player } from "../../types/types";
-import { cloneBoard, dropPiece, getAvailableColumns } from "./board";
+import { dropPiece, getAvailableColumns } from "./board";
 import { countImmediateWinningMoves } from "./tactical";
 
 /**
@@ -26,9 +26,7 @@ export const findForkingMove = (
   const availableColumns = getAvailableColumns(board);
 
   for (const column of availableColumns) {
-    const testBoard = cloneBoard(board);
-
-    const row = dropPiece(testBoard, column, player);
+    const { board: testBoard, row } = dropPiece(board, column, player);
 
     if (row === null) {
       continue;

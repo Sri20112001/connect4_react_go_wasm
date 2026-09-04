@@ -1,6 +1,6 @@
 import type { Board, Player } from "../../../types/types";
 import { checkWinner } from "../../../utilities/checkWinner";
-import { cloneBoard, dropPiece, getAvailableColumns } from "../board";
+import { dropPiece, getAvailableColumns } from "../board";
 import { simulateGame } from "../simulateGame";
 import {
   countImmediateWinningMoves,
@@ -43,9 +43,7 @@ export const analyzeMove = (
 
   const legal = availableColumns.includes(column);
 
-  const testBoard = cloneBoard(board);
-
-  const row = dropPiece(testBoard, column, player);
+  const { board: testBoard, row } = dropPiece(board, column, player);
 
   const playable = legal && row !== null;
 
@@ -79,9 +77,7 @@ export const analyzeMove = (
 
   if (shouldSimulate) {
     for (let i = 0; i < simulationsPerMove; i++) {
-      const simulationBoard = cloneBoard(board);
-
-      dropPiece(simulationBoard, column, player);
+      const { board: simulationBoard } = dropPiece(board, column, player);
 
       const outcome = simulateGame(simulationBoard, opponent);
 

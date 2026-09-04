@@ -42,9 +42,7 @@ const chooseHeuristicWeightedColumn = (
 
   const candidates = availableColumns
     .map((column) => {
-      const testBoard = cloneBoard(board);
-
-      const row = dropPiece(testBoard, column, player);
+      const { board: testBoard, row } = dropPiece(board, column, player);
 
       if (row === null) {
         return null;
@@ -138,9 +136,7 @@ const chooseRolloutMove = (board: Board, player: Player): number | null => {
   const forkingMove = findForkingMove(board, player);
 
   if (forkingMove !== null) {
-    const forkBoard = cloneBoard(board);
-
-    dropPiece(forkBoard, forkingMove, player);
+    const { board: forkBoard } = dropPiece(board, forkingMove, player);
 
     // Only play the fork if it doesn't hand the opponent
     // an immediate winning move in the process.
@@ -167,13 +163,11 @@ export const simulateGame = (
     throw new Error("AI player cannot be null");
   }
 
-  const board = cloneBoard(initialBoard);
+  let board = cloneBoard(initialBoard);
 
   let currentPlayer: Player = aiPlayer;
 
   while (true) {
-    // const availableColumns = getAvailableColumns(board);
-
     const column = chooseRolloutMove(board, currentPlayer);
 
     if (column === null) {
@@ -183,11 +177,13 @@ export const simulateGame = (
       };
     }
 
-    const row = dropPiece(board, column, currentPlayer);
+    const { board: nextBoard, row } = dropPiece(board, column, currentPlayer);
 
     if (row === null) {
       continue;
     }
+
+    board = nextBoard;
 
     const lines = countWinningLines(board, row, column, currentPlayer);
 

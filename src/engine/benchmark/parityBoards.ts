@@ -1,8 +1,6 @@
 import type { Board, Player } from "../../types/types";
 import createEmptyBoard from "../../utilities/createEmptyBoard";
-
-const ROWS = 6;
-const COLUMNS = 7;
+import { COLUMNS, ROWS } from "../../utilities/CONSTANTS";
 
 export type ParityBoard = {
   id: string;

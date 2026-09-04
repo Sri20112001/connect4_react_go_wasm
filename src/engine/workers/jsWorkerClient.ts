@@ -36,13 +36,28 @@ const getWorker = (): Worker | null => {
   }
 };
 
-const postToWorker = <T>(msg: Record<string, unknown>): Promise<T> => {
+const postToWorker = <T>(msg: Record<string, unknown>, timeoutMs = 15_000): Promise<T> => {
   const w = getWorker();
   if (!w) return Promise.reject(new Error("Worker not available"));
 
   const id = nextId++;
+  let timeoutHandle: number | null = null;
   const promise = new Promise<T>((resolve, reject) => {
-    pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+    const wrappedResolve = (v: unknown) => {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+      (resolve as (v: unknown) => void)(v);
+    };
+    const wrappedReject = (e: Error) => {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+      reject(e);
+    };
+    pending.set(id, { resolve: wrappedResolve, reject: wrappedReject });
+    timeoutHandle = window.setTimeout(() => {
+      if (pending.has(id)) {
+        pending.delete(id);
+        reject(new Error("Worker timeout after " + timeoutMs + "ms"));
+      }
+    }, timeoutMs);
   });
 
   // Structured clone board to avoid transfer issues
@@ -56,6 +71,8 @@ import runMonteCarloJS from "../javascript/monteCarlo";
 import { runMCTS } from "../javascript/mcts";
 import { analyzePosition } from "../javascript/analysis/analyzePosition";
 import { analyzeMove } from "../javascript/analysis/analyzeMove";
+import { clampSimulations } from "../../utilities/CONSTANTS";
+import { mctsResultToMonteCarloResult } from "../javascript/mctsToMonteCarlo";
 
 export const runJsBenchmarkInWorker = async (
   board: Board,
@@ -63,27 +80,28 @@ export const runJsBenchmarkInWorker = async (
   simulationsPerMove: number,
   algorithm: Algorithm = "monte-carlo",
 ): Promise<BenchmarkResult> => {
+  const safeSims = clampSimulations(simulationsPerMove);
   try {
     const result = await postToWorker<BenchmarkResult>({
       type: "benchmark",
       board,
       player,
-      simulationsPerMove,
+      simulationsPerMove: safeSims,
       algorithm,
     });
     return result;
   } catch {
     // Fallback to main thread
     if (player === null) {
-      return { engine: "javascript", algorithm, simulationsPerMove, totalSimulations: 0, executionTime: 0, simulationsPerSecond: 0, bestMove: null };
+      return { engine: "javascript", algorithm, simulationsPerMove: safeSims, totalSimulations: 0, executionTime: 0, simulationsPerSecond: 0, bestMove: null };
     }
     if (algorithm === "mcts") {
-      const r = runMCTS(board, player, simulationsPerMove);
+      const r = runMCTS(board, player, safeSims);
       const sps = r.executionTime > 0 ? r.totalSimulations / (r.executionTime / 1000) : 0;
-      return { engine: "javascript", algorithm, simulationsPerMove, totalSimulations: r.totalSimulations, executionTime: r.executionTime, simulationsPerSecond: sps, bestMove: r.bestMove === -1 ? null : r.bestMove };
+      return { engine: "javascript", algorithm, simulationsPerMove: safeSims, totalSimulations: r.totalSimulations, executionTime: r.executionTime, simulationsPerSecond: sps, bestMove: r.bestMove === -1 ? null : r.bestMove };
     }
-    const r = runMonteCarloJS(board, { simulationsPerMove, player });
-    return { engine: "javascript", algorithm, simulationsPerMove, totalSimulations: r.totalSimulations, executionTime: r.executionTime, simulationsPerSecond: r.simulationsPerSecond, bestMove: r.bestMove === -1 ? null : r.bestMove };
+    const r = runMonteCarloJS(board, { simulationsPerMove: safeSims, player });
+    return { engine: "javascript", algorithm, simulationsPerMove: safeSims, totalSimulations: r.totalSimulations, executionTime: r.executionTime, simulationsPerSecond: r.simulationsPerSecond, bestMove: r.bestMove === -1 ? null : r.bestMove };
   }
 };
 
@@ -94,12 +112,13 @@ export const chooseMoveInWorker = async (
   algorithm: Algorithm = "monte-carlo",
   explorationConstant?: number,
 ): Promise<MoveAnalysis> => {
+  const safeSims = clampSimulations(simulationsPerMove);
   try {
     const result = await postToWorker<MoveAnalysis>({
       type: "chooseMove",
       board,
       player,
-      simulationsPerMove,
+      simulationsPerMove: safeSims,
       algorithm,
       explorationConstant,
     });
@@ -107,19 +126,22 @@ export const chooseMoveInWorker = async (
   } catch {
     // Fallback to main thread
     if (algorithm === "mcts") {
-      const mcts = runMCTS(board, player, simulationsPerMove, explorationConstant);
+      const mcts = runMCTS(board, player, safeSims, explorationConstant);
       if (mcts.bestMove === -1) throw new Error("No legal moves available");
       const base = analyzeMove(board, mcts.bestMove, player, 0);
       const visits = mcts.visits.get(mcts.bestMove) ?? 0;
       const winsF = mcts.wins.get(mcts.bestMove) ?? 0;
+      const draws = mcts.draws.get(mcts.bestMove) ?? 0;
       const winRate = visits > 0 ? (winsF / visits) * 100 : 0;
+      const pureWins = Math.max(0, Math.round(winsF - draws * 0.5));
+      const losses = Math.max(0, visits - pureWins - draws);
       const tier = base.isImmediateWin ? 3 : base.blocksImmediateLoss ? 2 : base.createsFork ? 1 : 0;
       let finalScore = tier * 1000 + winRate + base.evaluationScore / 10;
       if (base.allowsOpponentFork) finalScore -= 15;
       if (!base.legal) finalScore = Number.NEGATIVE_INFINITY;
-      return { ...base, simulations: visits, wins: Math.round(winsF), losses: visits - Math.round(winsF), draws: 0, winRate, finalScore };
+      return { ...base, simulations: visits, wins: pureWins, losses, draws, winRate, finalScore };
     }
-    const analysis = analyzePosition(board, player, simulationsPerMove);
+    const analysis = analyzePosition(board, player, safeSims);
     if (analysis.length === 0) throw new Error("No legal moves available");
     return analysis[0];
   }
@@ -131,39 +153,23 @@ export const runMonteCarloInWorker = async (
   simulationsPerMove: number,
   algorithm: Algorithm = "monte-carlo",
 ): Promise<MonteCarloResult> => {
+  const safeSims = clampSimulations(simulationsPerMove);
   try {
     const result = await postToWorker<MonteCarloResult>({
       type: "monteCarloResult",
       board,
       player,
-      simulationsPerMove,
+      simulationsPerMove: safeSims,
       algorithm,
     });
     return result;
   } catch {
     // Fallback to main thread
     if (algorithm === "mcts") {
-      const r = runMCTS(board, player, simulationsPerMove);
-      const results = Array.from(r.visits.entries()).map(([col, visits]) => {
-        const winsF = r.wins.get(col) ?? 0;
-        return {
-          column: col,
-          simulations: visits,
-          wins: Math.round(winsF),
-          losses: visits - Math.round(winsF),
-          draws: 0,
-          winRate: visits > 0 ? (winsF / visits) * 100 : 0,
-        };
-      });
-      return {
-        bestMove: r.bestMove,
-        results,
-        executionTime: r.executionTime,
-        totalSimulations: r.totalSimulations,
-        simulationsPerSecond: r.executionTime > 0 ? r.totalSimulations / (r.executionTime / 1000) : 0,
-      };
+      const r = runMCTS(board, player, safeSims);
+      return mctsResultToMonteCarloResult(r);
     }
-    return runMonteCarloJS(board, { simulationsPerMove, player: player as Player });
+    return runMonteCarloJS(board, { simulationsPerMove: safeSims, player: player as Player });
   }
 };
 

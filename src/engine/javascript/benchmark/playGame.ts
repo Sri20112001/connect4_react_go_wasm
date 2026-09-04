@@ -1,8 +1,6 @@
 import { dropPiece, getAvailableColumns } from "../board";
-import type { Board, Player } from "../../../types/types";
-import {
-  checkWinner,
-} from "../../../utilities/checkWinner";
+import type { Player } from "../../../types/types";
+import { checkWinner } from "../../../utilities/checkWinner";
 import type { MoveFunction } from "../../types";
 
 
@@ -11,15 +9,7 @@ export type GameResult = {
   moves: number;
 };
 
-/**
- * Creates an empty Connect 4 board.
- */
-const createEmptyBoard = (): Board => {
-  return Array.from(
-    { length: 6 },
-    () => Array(7).fill(null),
-  );
-};
+import createEmptyBoard from "../../../utilities/createEmptyBoard";
 
 /**
  * Plays one complete game between two AI players.
@@ -31,7 +21,7 @@ export const playGame = (
   redAI: MoveFunction,
   yellowAI: MoveFunction,
 ): GameResult => {
-  const board = createEmptyBoard();
+  let board = createEmptyBoard();
 
   let currentPlayer: Player = "red";
   let moves = 0;
@@ -66,12 +56,6 @@ export const playGame = (
       currentPlayer,
     );
 
-    /**
-     * Safety check.
-     *
-     * An AI should never return an unavailable
-     * column.
-     */
     if (!availableColumns.includes(column)) {
       throw new Error(
         `AI selected invalid column ${column}. ` +
@@ -79,34 +63,16 @@ export const playGame = (
       );
     }
 
-    /**
-     * Drop the piece.
-     */
-    const row = dropPiece(
-      board,
-      column,
-      currentPlayer,
-    );
+    const { board: nextBoard, row } = dropPiece(board, column, currentPlayer);
 
     if (row === null) {
-      throw new Error(
-        `Failed to drop piece into column ${column}`,
-      );
+      throw new Error(`Failed to drop piece into column ${column}`);
     }
 
+    board = nextBoard;
     moves++;
 
-    /**
-     * Check whether this move won the game.
-     */
-    if (
-      checkWinner(
-        board,
-        row,
-        column,
-        currentPlayer,
-      )
-    ) {
+    if (checkWinner(board, row, column, currentPlayer)) {
       return {
         result: currentPlayer,
         moves,
